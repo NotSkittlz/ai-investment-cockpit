@@ -1,0 +1,224 @@
+{
+  "notice": "SYNTHETIC, NON-AUTHENTIC fixture for the disabled v1 artifact-journal preparation (CSL-255). No value here was observed from GitHub. Repository, workflow, run, artifact and actor IDs, SHAs and digests are invented. Passing this fixture proves only that the offline validator accepts a structurally complete snapshot; it never proves artifact trust, candidate acceptance or any authority. The archive digest and size are placeholders that a test harness replaces after building the ZIP in memory (see 'archive').",
+  "contract": "docs/ci-artifact-journal-v1.md",
+  "trusted_policy": {
+    "schema": "candidate-artifact-journal-policy/v1",
+    "repository_id": 100000001,
+    "repository": "example-org/example-repo",
+    "default_branch": "main",
+    "policy_commit": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+    "workflow_id": 200000001,
+    "workflow_path": ".github/workflows/candidate-journal-reconciler.yml",
+    "producer_events": ["schedule", "workflow_dispatch"],
+    "dispatch_actor_ids": [500000001],
+    "source_closure": {
+      "commit": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "files": {
+        ".github/workflows/candidate-journal-reconciler.yml": "1111111111111111111111111111111111111111111111111111111111111111",
+        "scripts/ci/candidate_artifact_journal.py": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    "artifact_name": "candidate-journal-v1",
+    "journal_entry": "candidate-journal-v1.json",
+    "bounds": {
+      "max_archive_bytes": 262144,
+      "max_entry_bytes": 131072,
+      "max_records": 512
+    }
+  },
+  "snapshot": {
+    "schema": "candidate-artifact-journal-snapshot/v1",
+    "observed_at": "2026-10-16T12:00:00Z",
+    "complete": true,
+    "default_branch_head": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+    "run": {
+      "id": 300000001,
+      "run_attempt": 1,
+      "event": "schedule",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "head_branch": "main",
+      "workflow_id": 200000001,
+      "path": ".github/workflows/candidate-journal-reconciler.yml",
+      "repository": {"id": 100000001, "full_name": "example-org/example-repo"},
+      "head_repository": {"id": 100000001},
+      "actor": {"id": 500000001, "login": "synthetic-owner", "type": "User"},
+      "triggering_actor": {"id": 500000001, "login": "synthetic-owner", "type": "User"},
+      "created_at": "2026-10-16T11:50:00Z",
+      "updated_at": "2026-10-16T11:55:00Z"
+    },
+    "workflow_runs": [
+      {
+        "id": 300000001,
+        "run_attempt": 1,
+        "event": "schedule",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+        "head_branch": "main",
+        "workflow_id": 200000001,
+        "path": ".github/workflows/candidate-journal-reconciler.yml",
+        "repository": {"id": 100000001, "full_name": "example-org/example-repo"},
+        "head_repository": {"id": 100000001},
+        "actor": {"id": 500000001, "login": "synthetic-owner", "type": "User"},
+        "triggering_actor": {"id": 500000001, "login": "synthetic-owner", "type": "User"},
+        "created_at": "2026-10-16T11:50:00Z",
+        "updated_at": "2026-10-16T11:55:00Z"
+      },
+      {
+        "id": 300000000,
+        "run_attempt": 1,
+        "event": "schedule",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+        "head_branch": "main",
+        "workflow_id": 200000001,
+        "path": ".github/workflows/candidate-journal-reconciler.yml",
+        "repository": {"id": 100000001, "full_name": "example-org/example-repo"},
+        "head_repository": {"id": 100000001},
+        "actor": {"id": 500000001, "login": "synthetic-owner", "type": "User"},
+        "triggering_actor": {"id": 500000001, "login": "synthetic-owner", "type": "User"},
+        "created_at": "2026-10-15T11:50:00Z",
+        "updated_at": "2026-10-15T11:55:00Z"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 400000001,
+        "name": "candidate-journal-v1",
+        "size_in_bytes": 0,
+        "expired": false,
+        "created_at": "2026-10-16T11:54:00Z",
+        "expires_at": "2027-01-14T11:54:00Z",
+        "updated_at": "2026-10-16T11:54:00Z",
+        "digest": "sha256:<computed-from-archive-bytes>",
+        "workflow_run": {
+          "id": 300000001,
+          "repository_id": 100000001,
+          "head_repository_id": 100000001,
+          "head_branch": "main",
+          "head_sha": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        }
+      },
+      {
+        "id": 400000002,
+        "name": "reconciler-logs",
+        "size_in_bytes": 1234,
+        "expired": false,
+        "created_at": "2026-10-16T11:54:00Z",
+        "expires_at": "2027-01-14T11:54:00Z",
+        "updated_at": "2026-10-16T11:54:00Z",
+        "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "workflow_run": {
+          "id": 300000001,
+          "repository_id": 100000001,
+          "head_repository_id": 100000001,
+          "head_branch": "main",
+          "head_sha": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+        }
+      }
+    ]
+  },
+  "snapshot_after_observed_at": "2026-10-16T12:00:05Z",
+  "archive": {
+    "entry": "candidate-journal-v1.json",
+    "encoding": "canonical JSON of journal_document: sort_keys, separators (',', ':'), ASCII only",
+    "layout": "single ZIP entry, stored (no compression), no archive comment, fixed 1980-01-01 timestamp, no symlink/encryption flags",
+    "digest_placeholder": "sha256:<computed-from-archive-bytes>",
+    "size_placeholder": 0,
+    "note": "Tests build the ZIP in memory and replace the placeholder digest/size on the 'candidate-journal-v1' artifact metadata. No binary blob is checked in. The placeholder itself can never validate."
+  },
+  "journal_document": {
+    "schema": "candidate-artifact-journal/v1",
+    "repository_id": 100000001,
+    "repository": "example-org/example-repo",
+    "policy_commit": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+    "workflow_id": 200000001,
+    "workflow_path": ".github/workflows/candidate-journal-reconciler.yml",
+    "producer": {
+      "run_id": 300000001,
+      "run_attempt": 1,
+      "event": "schedule",
+      "runtime_sha": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "workflow_ref": "example-org/example-repo/.github/workflows/candidate-journal-reconciler.yml@refs/heads/main"
+    },
+    "journal_sequence": 1,
+    "predecessor_digest": null,
+    "records": [
+      {
+        "sequence": 1,
+        "operation_id": "abababababababababababababababab",
+        "candidate": {"repo": "example-org/example-repo", "pr": 42, "head": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3", "tree": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4"},
+        "operation": "label-post",
+        "state": "reserved",
+        "run_id": 300000001
+      },
+      {
+        "sequence": 2,
+        "operation_id": "abababababababababababababababab",
+        "candidate": {"repo": "example-org/example-repo", "pr": 42, "head": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3", "tree": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4"},
+        "operation": "label-post",
+        "state": "attempted",
+        "run_id": 300000001
+      },
+      {
+        "sequence": 3,
+        "operation_id": "abababababababababababababababab",
+        "candidate": {"repo": "example-org/example-repo", "pr": 42, "head": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3", "tree": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4"},
+        "operation": "label-post",
+        "state": "unknown",
+        "run_id": 300000001
+      },
+      {
+        "sequence": 4,
+        "operation_id": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "candidate": {"repo": "example-org/example-repo", "pr": 43, "head": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6", "tree": "e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7"},
+        "operation": "label-post",
+        "state": "reserved",
+        "run_id": 300000001
+      },
+      {
+        "sequence": 5,
+        "operation_id": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "candidate": {"repo": "example-org/example-repo", "pr": 43, "head": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6", "tree": "e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7"},
+        "operation": "label-post",
+        "state": "attempted",
+        "run_id": 300000001
+      },
+      {
+        "sequence": 6,
+        "operation_id": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "candidate": {"repo": "example-org/example-repo", "pr": 43, "head": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6", "tree": "e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7"},
+        "operation": "label-post",
+        "state": "confirmed",
+        "run_id": 300000001
+      }
+    ]
+  },
+  "previous_evidence": {"kind": "genesis"},
+  "previous_evidence_note": "Caller-supplied offline bootstrap context for the test harness only. The validator cannot authenticate a genesis; real bootstrap and operator acceptance remain owner-held.",
+  "candidate": {"repo": "example-org/example-repo", "pr": 42, "head": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3", "tree": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4"},
+  "expected": {
+    "diagnostic_valid": true,
+    "chain": "genesis",
+    "semantic_state": "unknown-outcome",
+    "candidate_state": "unknown-outcome",
+    "operator_reconciliation_required": true,
+    "pr_unresolved_operations": ["abababababababababababababababab"],
+    "admitted": false,
+    "dispatch_allowed": false,
+    "side_effects": "rejected"
+  },
+  "other_candidates": {
+    "confirmed": {
+      "candidate": {"repo": "example-org/example-repo", "pr": 43, "head": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6", "tree": "e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7"},
+      "semantic_state": "confirmed"
+    },
+    "unrecorded": {
+      "candidate": {"repo": "example-org/example-repo", "pr": 44, "head": "c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8", "base": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "merge": "d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9", "tree": "eaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaea"},
+      "semantic_state": "not-dispatched"
+    }
+  }
+}
