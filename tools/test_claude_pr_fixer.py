@@ -791,9 +791,9 @@ class FixerGateAndPromptTests(unittest.TestCase):
             self.assertIn("prompt: |", body, job)
             self.assertIn("commit SHA", body, job)
             self.assertIn("do NOT resolve the thread", body, job)
-            self.assertIn("gh api repos/REPO/pulls/PR/comments/COMMENT_ID/replies", body, job)
+            self.assertIn("pre-push model-api -- reply COMMENT_ID BODY_FILE", body, job)
             allow = body.split("--allowedTools", 1)[1].split("--disallowedTools", 1)[0]
-            self.assertIn("Bash(gh api repos/*/pulls/*/comments/*/replies:*)", allow, job)
+            self.assertIn("Bash(python3 ${{ runner.temp }}/claude-fixer-guard/pre-push model-api --:*)", allow, job)
             self.assertNotIn("resolveReviewThread", allow, job)
             self.assertNotIn("fix or a rationale", body, job)
             self.assertIn("do NOT push", body, job)
@@ -1536,7 +1536,7 @@ class FixerPreflightTests(unittest.TestCase):
 
     def test_receipts_execute_trusted_source_before_checkout(self) -> None:
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
-        chunk = text.split("python3 - <<'CLAUDE_FIXER_RECEIPTS'\n", 1)[1].split("          CLAUDE_FIXER_RECEIPTS", 1)[0]
+        chunk = text.split("<<'CLAUDE_FIXER_RECEIPTS'\n", 1)[1].split("          CLAUDE_FIXER_RECEIPTS", 1)[0]
         self.assertEqual(textwrap.dedent(chunk).rstrip(), (ROOT / "scripts/ci/claude_fixer_receipts.py").read_text().rstrip())
         job = text.split("  devin-review-fix:", 1)[1]
         self.assertLess(job.index("id: cap"), job.index("id: eligibility"))

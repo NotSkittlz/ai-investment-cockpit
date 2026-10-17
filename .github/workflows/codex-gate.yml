@@ -2,14 +2,14 @@
 # this must not spend Blacksmith minutes. Missing CODEX_TRIGGER_PAT is a
 # notice skip, not a failure.
 #
-# Posts one `@codex review` per head SHA and handles READY/full CI or
+# Posts one `@codex review` per exact candidate/generation and handles READY/full CI or
 # MEDIATE/Linear only. FIX and missing verdicts never dispatch Claude.
 # Devin submitted reviews and authorized human requests drive the fixer.
 name: Codex CI/fixer gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, closed, edited]
   pull_request_review:
     types: [submitted]
   schedule:
@@ -29,16 +29,28 @@ permissions:
   pull-requests: read
   issues: read
 
-# One group for the whole repo so a review and a scheduled scan cannot both
-# apply a verdict twice for the same SHA. GitHub keeps one running + one pending run
-# per group; a displaced PR-open recovers on the next scheduled scan, which
-# posts any missing @codex review request. event-paths still proceeds.
-concurrency:
-  group: codex-gate
-  cancel-in-progress: false
+# No workflow-level lock. The scan job is read-only, and every side effect
+# happens in a gate job that holds the per-PR `claude-<PR>` writer lock, so
+# a review and a scheduled scan for the same PR still serialize there. A
+# repo-wide group would let one gate waiting behind a long Claude writer on
+# PR A hold back an unrelated PR B event and its scan, and GitHub would also
+# drop displaced pending runs instead of queueing them.
+#
+# Liveness limit (unresolved, no permission expansion): each run's gate
+# matrix admits at most four PRs at once, and a waiting gate holds its slot
+# while it queues for a busy `claude-<PR>` lock. A long writer can therefore
+# delay the other PRs of the same scheduled scan, and repeated scans queue
+# further gate jobs behind that lock (`queue: max`). This workflow never
+# cancels those queued jobs, but GitHub bounds each group to 100 pending
+# runs and discards arrivals beyond that, so fanout can be delayed and a
+# queued event is not guaranteed delivery; the scheduled scan recovers it.
 
 jobs:
-  gate:
+  # Legacy route, taken while CANDIDATE_COORDINATOR is not exactly "true"
+  # (the default): main's pre-CSL-259 head-scoped gate job, so switching the
+  # coordinator off keeps today's Codex gate running. Mutually exclusive with
+  # `gate` by the same variable; independent of `scan`.
+  legacy:
     # Owner-approved: exact bot provenance for ownership/invalidation receipts.
     permissions:
       contents: read
@@ -46,19 +58,32 @@ jobs:
       issues: write
     # Same-repo PRs only. Reviews only if Codex submitted them. Schedule and
     # dispatch scan for recoverable requests and verdicts. Forks never get the PAT or a checkout.
+    # Pull-request actions are limited to the four that main's trigger lists:
+    # this workflow also wakes on closed/edited/converted_to_draft for the
+    # coordinator, which the legacy handlers never received. Draft PRs are
+    # skipped as on the stack base, so they neither revoke a gate-owned label
+    # nor take the repo-wide group's pending slot.
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.draft == false &&
-        github.event.pull_request.head.repo.full_name == github.repository
-      ) ||
-      (
-        github.event_name == 'pull_request_review' &&
-        github.event.review.user.login == 'chatgpt-codex-connector[bot]' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+      vars.CANDIDATE_COORDINATOR != 'true' && (
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'pull_request' &&
+          contains(fromJSON('["opened","synchronize","reopened","ready_for_review"]'), github.event.action) &&
+          github.event.pull_request.draft == false &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        ) ||
+        (
+          github.event_name == 'pull_request_review' &&
+          github.event.review.user.login == 'chatgpt-codex-connector[bot]' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        )
       )
+    # main's workflow-level lock, scoped to this job: one group for the whole
+    # repo so a review and a scheduled scan cannot both apply a verdict twice.
+    concurrency:
+      group: codex-gate
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -101,9 +126,117 @@ jobs:
           fi
           python3 -X utf8 -B scripts/ci/codex_gate.py
 
+  scan:
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      prs: ${{ steps.scan.outputs.prs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Discover candidate PRs
+        id: scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SCAN: ${{ vars.CANDIDATE_COORDINATOR }}
+        run: |
+          set -euo pipefail
+          if [ ! -f scripts/ci/candidate_gate.py ]; then
+            echo 'prs=[]' >> "$GITHUB_OUTPUT"
+            echo '::notice::Candidate policy is not deployed on the default branch.'
+            exit 0
+          fi
+          python3 -X utf8 -B scripts/ci/candidate_gate.py
+
+  gate:
+    needs: scan
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        pr: ${{ fromJSON(needs.scan.outputs.prs || '[]') }}
+    # Same lock as every Claude writer; preserve the existing queue, never
+    # cancel or replace a queued writer to obtain a readiness decision. This
+    # per-PR lock is the only serialization for candidate side effects.
+    concurrency:
+      group: claude-${{ matrix.pr }}
+      queue: max
+      cancel-in-progress: false
+    # Owner-approved: exact bot provenance for ownership/invalidation receipts.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    # Same-repo PRs only. Human reviews can add/remove holds; only verified
+    # Codex reviews authorize delivery. Forks never receive the trigger PAT.
+    if: vars.CANDIDATE_COORDINATOR == 'true' && needs.scan.outputs.prs != '[]' && needs.scan.outputs.prs != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check trigger PAT
+        id: pat
+        env:
+          CODEX_TRIGGER_PAT: ${{ secrets.CODEX_TRIGGER_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEX_TRIGGER_PAT}" ]; then
+            echo "::notice::CODEX_TRIGGER_PAT is not configured; skipping Codex gate."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.pat.outputs.skip != 'true'
+        with:
+          # Trusted default-branch copy. Never run the PR head with the PAT.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          fetch-depth: 1
+      # Trusted policy identity = the exact default-branch commit this job
+      # checked out. The coordinator dispatches candidate CI on that branch,
+      # pins this SHA in every reservation and refuses to reserve, dispatch
+      # or qualify once the live default branch no longer equals it.
+      - name: Record trusted policy identity
+        id: policy
+        if: steps.pat.outputs.skip != 'true'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [ -n "$DEFAULT_BRANCH" ]
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "branch=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+      - name: Run Codex gate
+        if: steps.pat.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEX_TRIGGER_PAT: ${{ secrets.CODEX_TRIGGER_PAT }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          CODEX_CANDIDATE_PR: ${{ matrix.pr }}
+          CODEX_POLICY_SHA: ${{ steps.policy.outputs.sha }}
+          CODEX_POLICY_BRANCH: ${{ steps.policy.outputs.branch }}
+        run: |
+          set -euo pipefail
+          # First-merge bootstrap: this workflow ships in the PR, but the
+          # PAT job checks out the default branch so it never runs PR-head
+          # code. Until the script lands on main, skip with a notice.
+          if [ ! -f scripts/ci/codex_gate.py ]; then
+            echo "::notice::codex_gate.py is not on the default branch yet; skipping until first merge."
+            exit 0
+          fi
+          python3 -X utf8 -B scripts/ci/codex_gate.py
+
   # Tests check out the PR tree (same-repo only, GITHUB_TOKEN, no PAT).
-  # The gate job above is the only job that sees CODEX_TRIGGER_PAT, and it
-  # never checks out PR or fork code.
+  # The legacy and gate jobs above are the only jobs that see
+  # CODEX_TRIGGER_PAT, and they never check out PR or fork code.
   event-paths:
     if: >-
       github.event_name == 'pull_request' &&
@@ -114,13 +247,17 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Install workflow-test dependency
+        run: python3 -m pip install PyYAML
       - name: Codex-gate tests
         run: python3 -X utf8 -B tools/test_codex_gate.py
       - name: Fixer event-matrix tests
         run: python3 -X utf8 -B tools/test_claude_pr_fixer.py
+      - name: Exact candidate and delivery behavior
+        run: |
+          python3 -X utf8 -B -m unittest tools.test_merge_candidate tools.test_candidate_gate tools.test_candidate_workflows -v
       - name: Queue and review gate behavioral tests
         run: |
-          python3 -m pip install PyYAML
           python3 -X utf8 -B -m unittest tools.test_review_gate tools.test_queue_gates -v
       - name: actionlint
         env:

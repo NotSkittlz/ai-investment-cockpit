@@ -117,5 +117,15 @@ that every GitHub queue topology maps successfully.
    redundant main push jobs. Keep the fallback throughout this staged rollout.
 
 The public repository's standard Ubuntu control jobs are unbilled but consume
-runner capacity. Neither polling changes nor queue preparation guarantees savings
-against the $100/month Blacksmith target. Do not trade validation for that target.
+runner capacity. Neither polling changes nor queue preparation guarantees savings.
+P2 budget and cadence remain open; do not treat the historical budget as newly
+ratified or trade validation for it.
+
+# Candidate follow-on (CSL-259)
+
+The [exact candidate coordinator](ci-candidate-readiness.md) adds staged full
+ordinary-candidate evidence for all five Python and five Rust cells, including
+docs-only candidates, after independent READY and before human approval.
+`candidate-ci-gates` is an additional staged aggregate; no existing required name
+or repository protection changes here. The protected-policy and live-canary
+holds above still apply.

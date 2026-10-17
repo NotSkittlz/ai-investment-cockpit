@@ -775,7 +775,7 @@ def merge_mediate_description(
             body = block
     marker = stuck_pr_marker(repository, pr_number)
     if not any(_key_matches_pr(key, repository, pr_number) for key in stuck_pr_keys_in(body)):
-        body = f"{marker}\n{body.lstrip('\n')}"
+        body = marker + "\n" + body.lstrip("\n")
     return body if body.endswith("\n") else f"{body}\n"
 
 
@@ -1001,6 +1001,19 @@ def run(
             notice("bad event JSON")
             return 0
     gh = gh or GitHub(os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN", ""), pat)
+
+    # CSL-259: the trusted workflow supplies one PR under the existing shared
+    # fixer lock. Legacy pure functions remain for mediation and compatibility;
+    # production readiness uses exact candidate identity, never head-only READY.
+    candidate_number = os.environ.get("CODEX_CANDIDATE_PR", "")
+    if candidate_number:
+        import candidate_gate
+        try:
+            print(candidate_gate.run(__import__(__name__), gh, repository, candidate_number))
+            return 0
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            notice("candidate reconciliation failed closed; inspect reservations before retry")
+            return 1
 
     logs: list[str] = []
     try:
@@ -1283,7 +1296,8 @@ def _act(
     gh: GitHub,
     reviews: list[dict[str, Any]] | None = None,
 ) -> list[str]:
-    get_pages = lambda path: strict_items(gh, path)
+    def get_pages(path):
+        return strict_items(gh, path)
     def revoke():
         return FIXER_RECEIPTS.revoke_owned_ci(repository, number, sha, get_pages,
             lambda repo, num: gh.delete_read_token(f"repos/{repo}/issues/{num}/labels/{CI_FULL_LABEL}"),

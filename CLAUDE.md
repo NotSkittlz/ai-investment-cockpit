@@ -79,6 +79,14 @@ chief among them SEC-11 (`docs/security-hardening-backlog.md`).
    `decision` issues.
 6. Commit only when the operator asks. Message convention:
    `feat(RW-xx): …` / `fix(RW-xx): …` / `docs(RW-xx): …`.
+7. **CI etiquette (CSL-255):** open PRs as drafts; batch pushes; mark ready
+   once after validation and only when no owner hold remains. Never merge a
+   PR, rebase, or force-push. Avoid routine base merges; a normal base merge
+   is allowed for a real conflict or an owner-approved dependency integration,
+   even without a text conflict. Record the reason and rerun the combined gates.
+   Never edit `.github/workflows/**` unless a Linear issue
+   explicitly assigned by a human asks for it; bots mark ready with their own
+   identity, never `GITHUB_TOKEN`.
 
 ## Hard rules
 - Never put an LLM on the order or risk path.
@@ -98,6 +106,13 @@ on push to `main`, `merge_group`, the `ci:full` label, or full `workflow_dispatc
 skipped if idle 24h), on `ci:full`, or on `workflow_dispatch`. Hetzner is not part of
 current package validation. This changes platform evidence only and does not waive any online,
 broker, witness, paper-day, or pre-live gate.
+
+The staged [CSL-259 candidate coordinator](docs/ci-candidate-readiness.md) requests
+all five Python and five Rust cells, including docs-only candidates, after an
+authenticated exact head/base/merge/tree independent READY and before human
+approval. It preserves human holds and manual label removal; persistent labels
+and legacy head-only review/CI are not proof. No repository protections or queue
+settings are activated by this code.
 
 ```bash
 cd app

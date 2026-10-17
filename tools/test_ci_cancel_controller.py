@@ -610,6 +610,12 @@ class QueuePolicyTests(unittest.TestCase):
         if not exe:
             self.skipTest('actionlint not on PATH')
         config = (ROOT / '.github/actionlint.yaml').read_text()
+        parsed = yaml.load(config, Loader=yaml.BaseLoader)
+        diagnostic = (r'^unexpected key "queue" for "concurrency" section\. expected one of '
+                      r'"cancel-in-progress", "group"$')
+        allowed_paths = {'ci.yml', 'rust.yml', 'claude.yml', 'conflict-scan.yml', 'codex-gate.yml'}
+        self.assertEqual(parsed['paths'], {
+            f'.github/workflows/{name}': {'ignore': [diagnostic]} for name in allowed_paths})
         template = '''name: queue test
 on: pull_request
 concurrency:
@@ -622,6 +628,10 @@ jobs:
     steps:
       - run: echo ok
 '''
+        job_template = template.replace('concurrency:\n  group: fixture\n  cancel-in-progress: false\n  queue: max\n', '')
+        job_template = job_template.replace('  test:\n', '  test:\n    concurrency:\n'
+                                            '      group: fixture\n      cancel-in-progress: false\n'
+                                            '      queue: max\n')
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / '.git').mkdir()
@@ -629,8 +639,12 @@ jobs:
             directory.mkdir(parents=True)
             (root / '.github/actionlint.yaml').write_text(config)
             for name, body, allowed in [('ci.yml', template, True), ('rust.yml', template, True),
+                                        ('codex-gate.yml', job_template, True),
                                         ('other.yml', template, False),
+                                        ('other.yml', job_template, False),
                                         ('ci.yml', template.replace('queue: max', 'queues: max'), False),
+                                        ('codex-gate.yml', job_template.replace('queue: max', 'queues: max'), False),
+                                        ('codex-gate.yml', job_template.replace('echo ok', 'echo $unbound'), False),
                                         ('rust.yml', template.replace('echo ok', 'echo $unbound'), False)]:
                 path = directory / name
                 path.write_text(body)

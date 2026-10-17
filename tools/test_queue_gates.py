@@ -117,11 +117,13 @@ class QueueGateTests(unittest.TestCase):
                                        ('app/quant/pnl.py', 'false', ['linux', 'linux']),
                                        # Native signals/normalization paths added on main select cells;
                                        # sibling ingest/quant files that have no Rust twin stay a noop.
+                                       ('app/quant/signals.py', 'false', ['linux', 'linux']),
                                        ('app/quant/signals.py', 'true', ['linux', 'linux', 'windows', 'windows']),
                                        ('app/ingest/normalize.py', 'false', ['linux', 'linux']),
                                        ('app/tests/quant/test_signals.py', 'false', ['linux', 'linux']),
                                        ('app/tests/quant/test_signals_rust_parity.py', 'false', ['linux', 'linux']),
                                        ('app/tests/ingest/test_normalize.py', 'false', ['linux', 'linux']),
+                                       ('app/tests/ingest/test_normalize_rust_parity.py', 'false', ['linux', 'linux']),
                                        ('app/tests/ingest/test_normalize_rust_parity.py', 'true',
                                         ['linux', 'linux', 'windows', 'windows']),
                                        ('docs/notes.md\napp/ingest/normalize.py', 'false', ['linux', 'linux']),

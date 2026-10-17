@@ -106,8 +106,17 @@ provisioned.
    ambient `COCKPIT_*` vars — real operator config in the shell fails at least one
    test that asserts an unconfigured default.
 5. Keep the repository private and commit only when the operator asks.
-6. Any order-path change needs an adversarial-review round.
-7. The release-blocking local matrix is **native Windows plus Ubuntu under WSL2**, each on
+6. **CI etiquette (CSL-255):** open PRs as drafts; batch pushes (one push per
+   iteration when possible); mark ready **once**, after validation and only when
+   no owner hold remains. Never merge a PR, rebase, or force-push. Avoid routine
+   base merges; a normal base merge is allowed for a real conflict or an
+   owner-approved dependency integration even without a text conflict. Record
+   the reason and rerun the combined gates. Never edit
+   `.github/workflows/**` unless a Linear issue explicitly assigned by a human
+   asks for it; bots mark a PR ready with their own identity, never
+   `GITHUB_TOKEN`.
+7. Any order-path change needs an adversarial-review round.
+8. The release-blocking local matrix is **native Windows plus Ubuntu under WSL2**, each on
    Python 3.11 and 3.12. Run all four cells on the operator's Windows workstation. Hosted
    Linux (`linux-gates`) is a required PR diagnostic and does not replace that matrix;
    hosted Windows/macOS are not ordinary-PR checks; Hetzner is not a release gate. macOS is a
@@ -182,7 +191,7 @@ Hosted split (PR #102):
 - **Devin** is the GitHub PR code reviewer (findings). It does not auto-fix.
 - **Claude Code Action** (`.github/workflows/claude.yml`) is the fixer for Devin findings and `@claude` mentions on open, same-repository PRs whose author (and, for `@claude`, the commenter) has write, maintain or admin permission on the repo (other PRs are skipped by the workflow's event gate).
 - **Codex** has two allowed GitHub review paths, neither a Devin substitute:
-  1. **CI/fixer gate** (CSL-103, `.github/workflows/codex-gate.yml`) — one `@codex review` per head SHA; that reply must end with `CODEX-GATE: READY|MEDIATE`. See Code Review Rules.
+  1. **CI/fixer gate** (CSL-103/259, `.github/workflows/codex-gate.yml`) - one nonce-bound `@codex review` per exact head/base/merge/tree candidate and fixer generation; the reply echoes that identity and ends with `CODEX-GATE: READY|MEDIATE`. See Code Review Rules.
   2. **Stuck-thread watch** (CSL-86 / PR #124, `.github/workflows/stuck-thread-watch.yml`) — one advisory `@codex review` on unresolved Devin threads Claude could not settle, and **one** Linear `needs-decision` Triage roll-up per PR titled `Stuck PR threads: <repo>#<PR>`. Shared keys with the Codex CI/fixer gate: `<!-- stuck-pr-threads:owner/repo#N -->` and `<!-- codex-gate-mediate:owner/repo:N -->`; each writer owns only its fenced block. It adopts an existing roll-up only by that `stuck-pr-threads` HTML marker, never by title, and writes Linear only when at least one thread is actionable after the per-PR cap and `CODEX_TRIGGER_PAT` checks (or to create a missing roll-up after an earlier Linear outage). It skips already-approved PRs and updates that roll-up instead of filing a new issue per thread. That reply must **not** include a `CODEX-GATE:` line, and must not push, merge, resolve the thread, or open a fix PR.
 - **Blacksmith** hosts the paid test matrix. That is the GitHub test-CI path, not a revival of the retired Devin/SWE-2 swarm dispatch route: "No new Devin jobs" / `spawn_devin_leaf.py` frozen (RW-33) and CLAUDE.md's "Devin is retired" still apply to research/dev swarm jobs.
 - Cursor, Codex (as a coding agent), Grok, and interactive Claude Code develop features from Linear issues. They must not post review verdicts or run review-fix loops on other agents' PRs, except the stuck-thread watcher. A founder may have their own bot post reviews under their account when they direct it. The author agent may fix CI failures on its own PR.
@@ -190,7 +199,7 @@ Hosted split (PR #102):
 ## Review loop
 
 Devin reviews → Claude fixes (`claude.yml`) → the Codex gate (CSL-103) oversees
-`ci:full` / human handoff only. Devin findings
+candidate full CI / human handoff only. Devin findings
 trigger Claude directly without waiting for Codex. All Claude jobs share one
 per-PR lock with GitHub `queue: max` (one active, up to 100 pending; excess
 requests can still be dropped). The automated Devin fixer stops at eight consecutive Claude
@@ -207,8 +216,9 @@ The watcher never resolves threads, pushes, or merges.
 
 ## Code Review Rules
 
-These rules apply to the **CI/fixer gate** `@codex review` (comment marker
-`<!-- codex-gate:<sha> -->`). When the head is ready for full CI or needs a
+These rules apply to the **CI/fixer gate** `@codex review`. For READY, echo
+`CODEX-CANDIDATE` and `CODEX-REQUEST` exactly outside quotes or code fences and
+review the named head, base, merge commit and tree. When that candidate is ready for full CI or the current head needs a
 human decision, **end the review body with exactly one applicable verdict
 line**. When fixes are still pending, leave advisory findings without a verdict:
 
@@ -217,11 +227,14 @@ line**. When fixes are still pending, leave advisory findings without a verdict:
 
 - Legacy `CODEX-GATE: FIX` verdicts are ignored. Human-only findings need a human `@claude` mention.
   Devin submitted reviews trigger fixes directly; Codex never dispatches the fixer.
-- `READY` — findings are settled or none remain; apply the `ci:full` label
-  so the hosted Windows/macOS matrix runs once.
+- `READY` - findings are settled or none remain; the locked coordinator requests
+  both full matrices for the exact candidate, before human approval. Do not add
+  `ci:full`; persistent labels and legacy head-only replies are not qualification.
 - `MEDIATE` — Devin and Claude disagree or a thread needs a human. File or
   update the shared Linear `needs-decision` Triage issue per PR, titled
   `Stuck PR threads: <repo>#<PR>` (key `<!-- stuck-pr-threads:owner/repo#N -->`).
+  A genuine current-head, unquoted terminal MEDIATE does not require a mergeable
+  synthetic candidate or candidate nonce; it grants human handoff only, never CI.
   Skip if the PR is already approved. Do not wait for stuck-thread-watch (it
   only flags a needs-human phrase or a 6-hour-old Claude reply).
 
@@ -267,6 +280,8 @@ median slowdown, after sample spread, is above 10%. It does not fail
 
 Agents must **not** edit CI/runner configuration (`.github/workflows/**`, Blacksmith runner labels, caching, concurrency), Devin configuration, repo rulesets, or the MCP server list, unless a Linear issue explicitly assigned by a human asks for it.
 
+Open PRs as drafts, batch pushes, and mark ready once after validation and only when no owner hold remains. Never merge PRs, rebase, or force-push. Normal base merges are limited to real conflicts or owner-approved dependency integration (including integration without a text conflict); record the reason and rerun the combined gates. Bots convert draft → ready with their own App identity, not `GITHUB_TOKEN`.
+
 Trigger CI and reviews through the Discord bot (`/ci full|run`, `/devin review pr:<url>|run|status`, or MCP `ci_full` / `ci_run` / `devin_review` / `devin_run` / `devin_status`) or the `ci:full` label — not by editing config.
 
 Do not add paid services or raise spend limits.
@@ -295,24 +310,24 @@ pending; authentication, transport, and server errors still fail closed. The
 eight-commit count is applied only after receipt-aware selection proves pending
 work remains, so a clean PR does not receive a misleading loop-cap pause.
 
-READY is reconciled against live unresolved bug findings before and after applying
-`ci:full`, including explicit human handoffs. Verified addressed receipts count
-as handled. Historical READY audit comments never prevent a fresh reconciliation;
-MEDIATE retains trusted deduplication. Existing clean labels cause no repeated
-label writes or READY comments. `ci:full` requests CI, not merge approval.
+READY is reconciled against live unresolved bug findings and exact candidate
+identity before delivery and qualification, including explicit human handoffs.
+Verified addressed receipts count as handled. Historical READY comments and
+persistent labels never qualify a different candidate; MEDIATE retains trusted
+deduplication. Every candidate, including docs-only, needs the five Python and
+five Rust cells. See [candidate policy and deployment limits](docs/ci-candidate-readiness.md).
 
 Trusted Actions receipts bind gate-owned labels to exact label-event IDs across
-head changes. Only that event can be revoked. Human removals are observed with a trusted head-bound receipt and preserved
-on that head. A fresh verified READY on a different head may request CI again;
-The observation binds the first verified head where the gate sees the removal,
-not a reconstructed historical head. If removal on A is first seen on B, B is
-conservatively preserved; a later head may request CI. This also covers legacy
-removal history without inventing ownership.
+head changes. Only that event can be revoked. The candidate coordinator preserves
+human removals across heads until an explicit relabel; old head-bound removal
+receipts do not bypass that hold. This also covers legacy removal history without
+inventing ownership.
 Later re-adds are preserved; ambiguous ownership requires manual action. GitHub has no atomic
 compare-and-delete, so a human change between the final check and deletion is an
 unavoidable narrow race, not an atomic guarantee.
 
-Before adding a label, the gate records a trusted intent. It retries label-event visibility three times with one- and two-second waits. If ownership remains unknown or recording
+Legacy label additions have trusted intents and three bounded visibility checks.
+New candidate READY uses journaled direct dispatch without adding a label. If legacy ownership remains unknown or recording
 proof fails, the intent blocks subsequent READY processing, even after a restart.
 It never infers ownership from the PAT owner's name. Inspect the label and
 manually remove/re-add `ci:full` to reconcile; if absent, add then remove it.

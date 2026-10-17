@@ -52,6 +52,10 @@ def evaluate(expression, **overrides):
         'inputs.pr_number': '',
         'inputs.pr_head_sha': '',
         'inputs.merge_sha': '',
+        'inputs.pr_base_sha': '',
+        'inputs.merge_tree_sha': '',
+        'inputs.candidate_id': '',
+        'inputs.dispatch_nonce': '',
         'needs.filter.outputs.run-tests': 'true',
         'needs.filter.outputs.run-macos': 'true',
         'needs.filter.outputs.has-cells': 'true',
@@ -532,13 +536,31 @@ class DispatchScopeTests(unittest.TestCase):
             inputs = doc['on']['workflow_dispatch']['inputs']
             for key in ('pr_number', 'pr_head_sha', 'merge_sha'):
                 self.assertEqual(inputs[key]['default'], '')
+            candidate = {'github.event_name': 'workflow_dispatch', 'inputs.scope': 'full',
+                         'inputs.candidate_id': 'e' * 64, 'inputs.dispatch_nonce': 'f' * 32,
+                         'inputs.pr_base_sha': 'b' * 40, 'inputs.merge_tree_sha': 'd' * 40,
+                         'inputs.merge_sha': 'c' * 40}
             for job in jobs:
-                checkout = next(step for step in doc['jobs'][job]['steps']
-                                if step.get('uses') == 'actions/checkout@v4')
-                ref = checkout['with']['ref']
+                checkouts = [step for step in doc['jobs'][job]['steps']
+                             if step.get('uses') == 'actions/checkout@v4']
+                # Exactly one conditional trusted-policy checkout (github.sha on
+                # the default branch) precedes the single merge-context checkout.
+                policy, merge = checkouts
+                self.assertEqual(len(checkouts), 2)
+                self.assertEqual(policy['with']['ref'], '${{ github.sha }}')
+                self.assertEqual(policy['with']['fetch-depth'], '1')
+                self.assertEqual(policy['with']['persist-credentials'], 'false')
+                self.assertFalse(evaluate(policy['if']))
+                self.assertFalse(evaluate(policy['if'], **{'github.event_name': 'workflow_dispatch',
+                                                           'inputs.pr_number': '149',
+                                                           'inputs.merge_sha': 'b' * 40}))
+                self.assertTrue(evaluate(policy['if'], **candidate))
+                self.assertNotIn('if', merge)
+                ref = merge['with']['ref']
                 self.assertEqual(evaluate(ref), 'a' * 40)
                 self.assertEqual(evaluate(ref, **{'inputs.merge_sha': 'b' * 40}), 'b' * 40)
-            self.assertEqual(doc['jobs']['filter']['steps'][0]['with']['fetch-depth'], '2')
+                self.assertEqual(evaluate(ref, **candidate), 'c' * 40)
+                self.assertEqual(merge['with']['fetch-depth'], '2')
         self.assertEqual(self.step['env']['PR_HEAD_SHA'], '${{ github.event.pull_request.head.sha }}')
         self.assertEqual(self.step['env']['MERGE_SHA'], '${{ github.sha }}')
 

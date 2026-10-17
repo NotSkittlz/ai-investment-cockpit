@@ -1,4 +1,5 @@
 name: rust
+run-name: ${{ inputs.candidate_id && format('candidate:{0}:rust:{1}', inputs.candidate_id, inputs.dispatch_nonce) || github.workflow }}
 
 # CSL-42: Rust book, costs, PnL, feed normalization, and online estimators. This job builds the crate, runs its tests,
 # installs the PyO3 extension, and re-runs the Python tests against that extension.
@@ -56,6 +57,22 @@ on:
         description: Immutable PR merge candidate for a label retrigger
         type: string
         default: ""
+      pr_base_sha:
+        description: Exact approved candidate base (candidate dispatch only)
+        type: string
+        default: ""
+      merge_tree_sha:
+        description: Exact approved candidate merge tree (candidate dispatch only)
+        type: string
+        default: ""
+      dispatch_nonce:
+        description: Coordinator delivery nonce (32 hexadecimal characters)
+        type: string
+        default: ""
+      candidate_id:
+        description: Verified candidate identity digest (requires full scope)
+        type: string
+        default: ""
 
 # Manual/API dispatch defaults to full; enhancement-only label reruns request
 # scope=linux without changing Linux gates or ordinary PR platform selection.
@@ -66,9 +83,9 @@ concurrency:
   # Ordinary PR heads share a queue without arrival-order cancellation.
   # The trusted companion cancels only verified ancestors of the live head.
   # Label expected-head/scope, manual, draft and queue isolation is retained.
-  group: rust-${{ github.workflow }}-${{ inputs.pr_number || github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number && format('label-{0}-{1}', inputs.pr_head_sha, inputs.scope || 'full') || github.event_name == 'workflow_dispatch' && format('manual-{0}', inputs.scope || 'full') || github.event_name == 'merge_group' && 'queue' || (github.event_name == 'pull_request' && github.event.pull_request.draft && 'draft') || 'default' }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' }}
-  queue: ${{ github.event_name == 'pull_request' && 'max' || 'single' }}
+  group: rust-${{ github.workflow }}-${{ inputs.pr_number || github.event.pull_request.number || github.ref }}-${{ (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '') && format('candidate-{0}', inputs.candidate_id || github.run_id) || github.event_name == 'workflow_dispatch' && inputs.pr_number && format('label-{0}-{1}', inputs.pr_head_sha, inputs.scope || 'full') || github.event_name == 'workflow_dispatch' && format('manual-{0}', inputs.scope || 'full') || github.event_name == 'merge_group' && 'queue' || (github.event_name == 'pull_request' && github.event.pull_request.draft && 'draft') || 'default' }}
+  cancel-in-progress: ${{ github.event_name != 'pull_request' && inputs.candidate_id == '' && inputs.pr_base_sha == '' && inputs.merge_tree_sha == '' && inputs.dispatch_nonce == '' }}
+  queue: ${{ (github.event_name == 'pull_request' || inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '') && 'max' || 'single' }}
 
 jobs:
   filter:
@@ -80,12 +97,90 @@ jobs:
       matrix: ${{ steps.gate.outputs.matrix }}
       has-cells: ${{ steps.gate.outputs.has-cells }}
     steps:
+      # Candidate dispatches arrive on the default branch, so github.sha is the
+      # trusted policy commit, not the candidate head. Check out that exact
+      # commit first and stage its validator outside the workspace before any
+      # candidate file exists on this runner. Ordinary events skip this step.
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '')
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      # Install the interpreter before candidate validation (see ci.yml): Windows
+      # cells expose `python`, not a dependable `python3`, and the trusted action
+      # reads no candidate files when no pip cache is requested.
+      - uses: actions/setup-python@v5
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '')
+        with:
+          python-version: "3.12"
+      - name: Stage trusted candidate validator
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '')
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Policy witness: checked-out commit, github.sha and workflow_sha agree.
+          head="$(git rev-parse HEAD)"
+          [ "$head" = "$GITHUB_SHA" ]
+          [ "$head" = "$GITHUB_WORKFLOW_SHA" ]
+          [ -n "$DEFAULT_BRANCH" ]
+          [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ]
+          [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]
+          helper=scripts/ci/merge_candidate.py
+          if [ -L "$helper" ] || [ ! -f "$helper" ]; then
+            echo "::error::Trusted candidate validator is absent from policy commit ${head}; the candidate copy is never substituted."
+            exit 1
+          fi
+          stage="${RUNNER_TEMP}/codex-policy"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          cp "$helper" "$stage/merge_candidate.py"
+          # Stage every control file this trusted YAML executes after the
+          # candidate checkout (local action, installer, pins, aggregate helper,
+          # workflows). Validation refuses candidate copies that differ.
+          python -I -X utf8 -B "$stage/merge_candidate.py" stage-policy "$stage"
+          [ -f "$stage/manifest.json" ]
+          {
+            echo "CODEX_POLICY_SHA=$head"
+            echo "CODEX_POLICY_BRANCH=$DEFAULT_BRANCH"
+            echo "CODEX_POLICY_VALIDATOR=$stage/merge_candidate.py"
+          } >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.merge_sha || github.sha }}
           fetch-depth: 2
+      - name: Validate exact full candidate
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          PR_HEAD_SHA: ${{ inputs.pr_head_sha }}
+          PR_BASE_SHA: ${{ inputs.pr_base_sha }}
+          MERGE_SHA: ${{ inputs.merge_sha }}
+          MERGE_TREE_SHA: ${{ inputs.merge_tree_sha }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+          CANDIDATE_SCOPE: ${{ inputs.scope }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$CANDIDATE_SCOPE" = "full" ]
+          # The staged policy validator, never scripts/ci/merge_candidate.py from
+          # the candidate workspace; -I keeps candidate paths off sys.path.
+          [ -n "${CODEX_POLICY_SHA:-}" ]
+          [ -n "${CODEX_POLICY_VALIDATOR:-}" ]
+          [ "$GITHUB_SHA" = "$CODEX_POLICY_SHA" ]
+          [ "$GITHUB_WORKFLOW_SHA" = "$CODEX_POLICY_SHA" ]
+          [ ! -L "$CODEX_POLICY_VALIDATOR" ]
+          [ -f "$CODEX_POLICY_VALIDATOR" ]
+          [ -f "${CODEX_POLICY_VALIDATOR%/*}/manifest.json" ]
+          python -I -X utf8 -B "$CODEX_POLICY_VALIDATOR" validate-dispatch
+      # Skipped only for a complete candidate tuple, whose independent validator
+      # above fails closed on partial or invalid inputs. Partial tuples run both.
       - name: Validate label dispatch context
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id == '' || inputs.pr_base_sha == '' || inputs.merge_tree_sha == '' || inputs.dispatch_nonce == '')
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           PR_HEAD_SHA: ${{ inputs.pr_head_sha }}
@@ -229,9 +324,84 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.filter.outputs.matrix) }}
     steps:
+      # Trusted policy commit first (github.sha on the default-branch dispatch),
+      # validator staged outside the workspace, then the exact candidate merge.
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '')
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      # The cell interpreter is installed before candidate validation and reused
+      # by the extension build and Python tests below. Windows cells expose
+      # `python`, not a dependable `python3`.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Stage trusted candidate validator
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '')
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Policy witness: checked-out commit, github.sha and workflow_sha agree.
+          head="$(git rev-parse HEAD)"
+          [ "$head" = "$GITHUB_SHA" ]
+          [ "$head" = "$GITHUB_WORKFLOW_SHA" ]
+          [ -n "$DEFAULT_BRANCH" ]
+          [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ]
+          [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]
+          helper=scripts/ci/merge_candidate.py
+          if [ -L "$helper" ] || [ ! -f "$helper" ]; then
+            echo "::error::Trusted candidate validator is absent from policy commit ${head}; the candidate copy is never substituted."
+            exit 1
+          fi
+          stage="${RUNNER_TEMP}/codex-policy"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          cp "$helper" "$stage/merge_candidate.py"
+          # Stage every control file this trusted YAML executes after the
+          # candidate checkout (local action, installer, pins, aggregate helper,
+          # workflows). Validation refuses candidate copies that differ.
+          python -I -X utf8 -B "$stage/merge_candidate.py" stage-policy "$stage"
+          [ -f "$stage/manifest.json" ]
+          {
+            echo "CODEX_POLICY_SHA=$head"
+            echo "CODEX_POLICY_BRANCH=$DEFAULT_BRANCH"
+            echo "CODEX_POLICY_VALIDATOR=$stage/merge_candidate.py"
+          } >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.merge_sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Validate exact full candidate
+        if: github.event_name == 'workflow_dispatch' && (inputs.candidate_id != '' || inputs.pr_base_sha != '' || inputs.merge_tree_sha != '' || inputs.dispatch_nonce != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          PR_HEAD_SHA: ${{ inputs.pr_head_sha }}
+          PR_BASE_SHA: ${{ inputs.pr_base_sha }}
+          MERGE_SHA: ${{ inputs.merge_sha }}
+          MERGE_TREE_SHA: ${{ inputs.merge_tree_sha }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+          CANDIDATE_SCOPE: ${{ inputs.scope }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$CANDIDATE_SCOPE" = "full" ]
+          # The staged policy validator, never scripts/ci/merge_candidate.py from
+          # the candidate workspace; -I keeps candidate paths off sys.path.
+          [ -n "${CODEX_POLICY_SHA:-}" ]
+          [ -n "${CODEX_POLICY_VALIDATOR:-}" ]
+          [ "$GITHUB_SHA" = "$CODEX_POLICY_SHA" ]
+          [ "$GITHUB_WORKFLOW_SHA" = "$CODEX_POLICY_SHA" ]
+          [ ! -L "$CODEX_POLICY_VALIDATOR" ]
+          [ -f "$CODEX_POLICY_VALIDATOR" ]
+          [ -f "${CODEX_POLICY_VALIDATOR%/*}/manifest.json" ]
+          python -I -X utf8 -B "$CODEX_POLICY_VALIDATOR" validate-dispatch
       - uses: dtolnay/rust-toolchain@master
         with:
           # Same channel as rust/rust-toolchain.toml. Passing `stable` as well
@@ -240,9 +410,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
       - name: Rust tests
         working-directory: rust
         run: cargo test --workspace

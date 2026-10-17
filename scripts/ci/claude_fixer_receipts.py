@@ -166,6 +166,39 @@ def pending_findings(items: list[dict], comments: list[dict], head: str, compare
     return pending
 
 
+def terminal_receipts(items, comments, head, compare, permission):
+    """Read-only evidence for captured roots; never changes eligibility or journals."""
+    reports = []
+    for item in items:
+        root = item["root"]
+        roots = [c for c in comments if c.get("id") == root and not c.get("in_reply_to_id")]
+        if (len(roots) != 1 or not bot(roots[0].get("user") or {}, "devin-ai-integration[bot]", DEVIN_ID)
+                or digest(str(roots[0].get("body") or "")) != item["fingerprint"]):
+            reports.append({"root": root, "status": "root-changed-or-unverified"})
+            continue
+        replies = [c for c in comments if c.get("in_reply_to_id") == root]
+
+        # Restrict this audit to the workflow-captured base. Reuse the existing
+        # consumer for identity, schema, full SHA, ancestry and follow-up rules.
+        scoped = []
+        for comment in comments:
+            if bot(comment.get("user") or {}, "claude[bot]", CLAUDE_ID):
+                receipts = [r for r in records(str(comment.get("body") or ""), "result")
+                            if r.get("base") == item["base"]]
+                comment = {**comment, "body": "\n".join(marker("result", r) for r in receipts)}
+            scoped.append(comment)
+        if not pending_findings([item], scoped, head, compare, permission, manual=True):
+            status = "verified-addressed"
+        elif not pending_findings([item], scoped, head, compare, permission):
+            status = "verified-needs-human"
+        elif any("<!-- claude-fixer-result:" in str(c.get("body") or "") for c in replies):
+            status = "invalid-or-superseded"
+        else:
+            status = "missing"
+        reports.append({"root": root, "status": status})
+    return reports
+
+
 def attempt_key(head: str, items: list[dict]) -> dict:
     canonical = json.dumps(sorted(items, key=lambda item: item["root"]), sort_keys=True, separators=(",", ":"))
     return {"head": head, "fingerprint": digest(canonical)}
@@ -212,6 +245,7 @@ def emit(items: list[dict], head: str, reason: str = "") -> None:
     ids = [item["root"] for item in items]
     thread_ids = [item["thread"] for item in items]
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+        output.write(f"attempt_key={head}:{attempt_key(head, items)['fingerprint']}\n")
         output.write(f"skip={'false' if items else 'true'}\ncomment_ids={json.dumps(ids)}\nthread_ids={json.dumps(thread_ids)}\nreceipt_context={json.dumps(context, separators=(',', ':'))}\nreason={reason}\n")
     print(json.dumps(ids))
 

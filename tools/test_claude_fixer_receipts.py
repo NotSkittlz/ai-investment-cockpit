@@ -52,6 +52,50 @@ class ReceiptTests(unittest.TestCase):
     def pending(self, comments, compare=lambda base, tip: "ahead", manual=False):
         return m.pending_findings(self.items, comments, C, compare, lambda user: "write", manual)
 
+    def test_authenticated_abbreviated_push_receipt_cannot_claim_handled(self):
+        # Actual #147 producer failure: the push existed, but its 7-char receipt
+        # was invalid. Never weaken the consumer to accept ambiguous object IDs.
+        short = self.receipt | {"commit": "d5194ed"}
+        compared = []
+        def compare(base, tip):
+            compared.append((base, tip))
+            return "ahead"
+        self.assertEqual(len(self.pending([reply(short)], compare)), 1)
+        self.assertEqual(compared, [])
+
+    def test_codex_mediation_never_handles_or_reserves_claude_findings(self):
+        codex = actor("chatgpt-codex-connector[bot]", 199175422)
+        key = m.attempt_key(C, self.items)
+        bodies = ["CODEX-GATE: MEDIATE", "CODEX-GATE: READY",
+                  m.marker("result", self.receipt),
+                  m.marker("result", self.receipt | {"status": "needs-human"}),
+                  m.marker("attempt", {**key, "run": "1", "attempt": "1"})]
+        for body in bodies:
+            mediator = {"id": 810, "in_reply_to_id": 1, "user": codex,
+                        "created_at": "2026-10-16T01:00:00Z", "body": body}
+            self.assertEqual(len(self.pending([mediator])), 1)
+            self.assertEqual(m.attempt_count([mediator], key), 0)
+
+    def test_terminal_failure_audit_preserves_fresh_eligibility_and_budget(self):
+        # Workflow-owned diagnostic notices are neither result receipts nor
+        # reservations. Failed runs remain pending, not freshly authorized work.
+        failure = {"id": 800, "in_reply_to_id": 1,
+                   "created_at": "2026-10-16T01:00:00Z",
+                   "user": actor("github-actions[bot]", m.ACTIONS_ID),
+                   "body": "Claude fixer terminal audit: command-denied. No verified pushed fix."}
+        self.assertEqual(len(self.pending([failure])), 1)
+        key = m.attempt_key(C, self.items)
+        attempts = [failure]
+        for run in (1, 2, 3):
+            attempts.append({"id": run, "user": actor("github-actions[bot]", m.ACTIONS_ID),
+                             "body": m.marker("attempt", {**key, "run": str(run), "attempt": "1"})})
+        self.assertEqual(m.attempt_count(attempts, key), 3)
+        self.assertEqual(m.attempt_count(attempts, m.attempt_key(B, self.items)), 0)
+        for flag in ("isResolved", "isOutdated"):
+            root = thread()
+            root[flag] = True
+            self.assertEqual(findings([root]), [])
+
     def test_rejections_and_head_observations_require_trusted_provenance(self):
         import subprocess
         for status in (400, 401, 403, 404, 409, 422, 429):

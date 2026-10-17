@@ -10,6 +10,9 @@ self-hosted-runner:
 # shared fixer queues and ordinary PR queues, including negative controls.
 # All other actionlint checks remain enabled.
 paths:
+  .github/workflows/codex-gate.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
   .github/workflows/claude.yml:
     ignore:
       - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
